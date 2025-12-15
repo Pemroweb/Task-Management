@@ -17,11 +17,17 @@ const Task = ({ task, provided }: TaskProps) => {
       {...provided.dragHandleProps}
       className="w-full cursor-grab bg-[#fff] flex flex-col justify-between gap-3 items-start shadow-sm rounded-xl px-3 py-4"
     >
-      {image && alt && (
-        <img src={image} alt={alt} className="w-full h-[170px] rounded-lg" />
+      {/* PERBAIKAN DI SINI: Hapus syarat '&& alt' */}
+      {image && (
+        <img
+          src={image}
+          alt={alt || "Task Image"}
+          className="w-full h-[170px] rounded-lg object-cover"
+        />
       )}
+
       <div className="flex items-center gap-2">
-        {tags.map((tag) => (
+        {tags?.map((tag) => (
           <span
             key={tag.title}
             className="px-[10px] py-[2px] text-[13px] font-medium rounded-md"
@@ -35,7 +41,7 @@ const Task = ({ task, provided }: TaskProps) => {
         <span className="text-[15.5px] font-medium text-[#555]">{title}</span>
         <span className="text-[13.5px] text-gray-500">{description}</span>
       </div>
-      <div className="w-full border border-dashed"></div>
+      <div className="w-full border border-dashed border-gray-200"></div>
       <div className="w-full flex items-center justify-between">
         <div className="flex items-center gap-1">
           <Clock color={"#666"} size={19} />

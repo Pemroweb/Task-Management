@@ -17,3 +17,9 @@ export type Column = {
 export type Columns = {
   [key: string]: Column;
 };
+
+export type ColumnData = {
+  id: string;
+  name: string;
+  createdAt: number;
+};
