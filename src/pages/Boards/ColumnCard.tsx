@@ -164,13 +164,21 @@ const ColumnCard = ({
           >
             <div
               {...provided.dragHandleProps}
-              className={`flex items-center justify-between py-[10px] w-full bg-white rounded-lg shadow-sm text-[#555] font-medium text-[15px] px-3 ${
-                wipReached ? "border border-red-200" : ""
+              className={`flex items-center justify-between py-2.5 w-full rounded-xl shadow-sm font-medium text-[15px] px-3 border transition-colors ${
+                wipReached
+                  ? "bg-red-50 border-red-200 text-red-900"
+                  : "bg-white border-slate-200 text-slate-700 hover:border-slate-300"
               }`}
             >
               <div className="flex items-center gap-2">
-                {column.name}
-                <span className="bg-gray-200 text-xs px-2 py-1 rounded-full text-gray-600">
+                <span className="font-semibold">{column.name}</span>
+                <span
+                  className={`text-xs px-2 py-1 rounded-full font-semibold ${
+                    wipReached
+                      ? "bg-red-100 text-red-700"
+                      : "bg-slate-100 text-slate-600"
+                  }`}
+                >
                   {countText}
                 </span>
               </div>
@@ -179,28 +187,33 @@ const ColumnCard = ({
                   <button
                     type="button"
                     onClick={() => onStartEdit(columnId, column)}
-                    className="text-gray-400 hover:text-gray-700"
+                    className="text-slate-400 hover:text-slate-700"
                     title="Column settings"
                   >
                     <Settings size={16} />
                   </button>
                 ) : null}
-                <Trash2
-                  size={18}
-                  className="text-gray-400 hover:text-red-500 cursor-pointer"
-                  onClick={() => onDeleteColumn(columnId)}
-                />
+                {canManageLists ? (
+                  <button
+                    type="button"
+                    onClick={() => onDeleteColumn(columnId)}
+                    className="text-slate-400 hover:text-red-600"
+                    title="Delete list"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                ) : null}
               </div>
             </div>
 
             {isEditing ? (
-              <div className="w-full bg-white border border-gray-200 rounded-lg p-3 shadow-sm">
+              <div className="w-full bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
                 <div className="flex flex-col gap-2">
                   <input
                     type="text"
                     value={columnEdit.name}
                     onChange={(e) => onChangeEdit({ name: e.target.value })}
-                    className="w-full h-9 px-2 rounded-md bg-slate-100 border border-slate-300 text-sm"
+                    className="w-full h-9 px-3 rounded-xl bg-slate-50 border border-slate-200 text-sm focus:ring-2 focus:ring-orange-200 focus:border-orange-300 outline-none"
                     placeholder="List name"
                   />
                   <div className="grid grid-cols-2 gap-2">
@@ -211,7 +224,7 @@ const ColumnCard = ({
                       onChange={(e) =>
                         onChangeEdit({ wipLimit: e.target.value })
                       }
-                      className="w-full h-9 px-2 rounded-md bg-slate-100 border border-slate-300 text-sm"
+                      className="w-full h-9 px-3 rounded-xl bg-slate-50 border border-slate-200 text-sm focus:ring-2 focus:ring-orange-200 focus:border-orange-300 outline-none"
                       placeholder="WIP limit"
                     />
                     <select
@@ -221,7 +234,7 @@ const ColumnCard = ({
                           stage: e.target.value as ColumnEditState["stage"],
                         })
                       }
-                      className="w-full h-9 px-2 rounded-md bg-slate-100 border border-slate-300 text-sm"
+                      className="w-full h-9 px-3 rounded-xl bg-slate-50 border border-slate-200 text-sm focus:ring-2 focus:ring-orange-200 focus:border-orange-300 outline-none"
                     >
                       <option value="">Stage (auto)</option>
                       <option value="backlog">Backlog</option>
@@ -234,14 +247,14 @@ const ColumnCard = ({
                     <button
                       type="button"
                       onClick={onCancelEdit}
-                      className="px-3 py-1.5 rounded-md bg-gray-100 text-gray-700 text-xs font-semibold hover:bg-gray-200"
+                      className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold hover:bg-slate-200"
                     >
                       Cancel
                     </button>
                     <button
                       type="button"
                       onClick={onSaveEdit}
-                      className="px-3 py-1.5 rounded-md bg-orange-400 text-white text-xs font-semibold hover:bg-orange-500"
+                      className="px-3 py-1.5 rounded-xl bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600"
                     >
                       Save
                     </button>
@@ -294,9 +307,9 @@ const ColumnCard = ({
       </Droppable>
       <div
         onClick={() => onOpenAddTask(columnId)}
-        className="flex cursor-pointer items-center justify-center gap-1 py-[10px] w-full opacity-90 bg-white rounded-lg shadow-sm text-[#555] font-medium text-[15px] hover:bg-gray-50 transition-colors"
+        className="flex cursor-pointer items-center justify-center gap-1 py-2.5 w-full bg-white rounded-xl shadow-sm text-slate-700 font-semibold text-[14px] border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-colors"
       >
-        <Plus color={"#555"} size={20} />
+        <Plus color={"#334155"} size={18} />
         Add Task
       </div>
     </div>

@@ -1,8 +1,11 @@
 import type { BoardMember } from "../../types/collaboration";
 import type { Sprint } from "../../types/sprints";
 import type { BoardFilters, SwimlaneMode } from "./boardTypes";
+import { Search, X } from "lucide-react";
 
 type BoardFiltersBarProps = {
+  searchQuery: string;
+  onSearchQueryChange: (next: string) => void;
   filters: BoardFilters;
   swimlane: SwimlaneMode;
   tags: string[];
@@ -14,6 +17,8 @@ type BoardFiltersBarProps = {
 };
 
 const BoardFiltersBar = ({
+  searchQuery,
+  onSearchQueryChange,
   filters,
   swimlane,
   tags,
@@ -25,6 +30,26 @@ const BoardFiltersBar = ({
 }: BoardFiltersBarProps) => {
   return (
     <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-100 flex flex-wrap gap-3 items-center">
+      <div className="flex items-center gap-2 h-9 px-2 rounded-md bg-slate-100 border border-slate-300">
+        <Search size={16} className="text-slate-500" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => onSearchQueryChange(e.target.value)}
+          placeholder="Search tasks..."
+          className="bg-transparent outline-none text-sm w-[180px]"
+        />
+        {searchQuery.trim() ? (
+          <button
+            type="button"
+            onClick={() => onSearchQueryChange("")}
+            className="p-1 rounded-full hover:bg-slate-200"
+            title="Clear search"
+          >
+            <X size={14} className="text-slate-600" />
+          </button>
+        ) : null}
+      </div>
       <select
         value={filters.assignee}
         onChange={(e) => onChangeFilters({ assignee: e.target.value })}
@@ -105,4 +130,3 @@ const BoardFiltersBar = ({
 };
 
 export default BoardFiltersBar;
-

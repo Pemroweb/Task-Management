@@ -181,16 +181,23 @@ const AddModal = ({
     setTaskData({ ...taskData, [name]: value });
   };
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const reader = new FileReader();
-      reader.onload = function (e) {
-        if (e.target) {
-          setTaskData({ ...taskData, image: e.target.result as string });
-        }
-      };
-      reader.readAsDataURL(e.target.files[0]);
-    }
+  const isImageAttachment = (att: Attachment) => {
+    const t = String(att.type || "").toLowerCase();
+    if (t === "image" || t.startsWith("image/")) return true;
+    return /\.(png|jpe?g|gif|webp|svg)(\?|#|$)/i.test(att.url);
+  };
+
+  const setCoverFromAttachment = (att: Attachment) => {
+    if (!att.url) return;
+    setTaskData((prev) => ({
+      ...prev,
+      image: att.url,
+      alt: prev.alt || att.name || "Task cover image",
+    }));
+  };
+
+  const clearCover = () => {
+    setTaskData((prev) => ({ ...prev, image: "", alt: "" }));
   };
 
   const handleAttachmentFileChange = (
@@ -267,19 +274,31 @@ const AddModal = ({
       createdAt: Date.now(),
       createdBy: user?.uid || "unknown",
     };
-    setTaskData((prev) => ({
-      ...prev,
-      attachments: [...(prev.attachments || []), nextAttachment],
-    }));
+    setTaskData((prev) => {
+      const nextAttachments = [...(prev.attachments || []), nextAttachment];
+      const patch: Record<string, unknown> = { attachments: nextAttachments };
+      if (!prev.image && isImageAttachment(nextAttachment)) {
+        patch.image = nextAttachment.url;
+        patch.alt = nextAttachment.name || "Task cover image";
+      }
+      return { ...prev, ...patch };
+    });
     setAttachmentName("");
     setAttachmentUrl("");
   };
 
   const handleRemoveAttachment = (id: string) => {
-    setTaskData((prev) => ({
-      ...prev,
-      attachments: (prev.attachments || []).filter((att) => att.id !== id),
-    }));
+    setTaskData((prev) => {
+      const attachments = prev.attachments || [];
+      const removed = attachments.find((att) => att.id === id);
+      const nextAttachments = attachments.filter((att) => att.id !== id);
+      const patch: Record<string, unknown> = { attachments: nextAttachments };
+      if (removed && prev.image && removed.url && prev.image === removed.url) {
+        patch.image = "";
+        patch.alt = "";
+      }
+      return { ...prev, ...patch };
+    });
   };
 
   const handleUploadAttachment = async (file: File) => {
@@ -330,10 +349,15 @@ const AddModal = ({
         createdAt: Date.now(),
         createdBy: user.uid,
       };
-      setTaskData((prev) => ({
-        ...prev,
-        attachments: [...(prev.attachments || []), nextAttachment],
-      }));
+      setTaskData((prev) => {
+        const nextAttachments = [...(prev.attachments || []), nextAttachment];
+        const patch: Record<string, unknown> = { attachments: nextAttachments };
+        if (!prev.image && isImageAttachment(nextAttachment)) {
+          patch.image = nextAttachment.url;
+          patch.alt = nextAttachment.name || "Task cover image";
+        }
+        return { ...prev, ...patch };
+      });
     } catch (err) {
       setAttachmentError(
         err instanceof Error ? err.message : "Upload failed."
@@ -378,10 +402,6 @@ const AddModal = ({
           : [...prev.mentions, uid],
       };
     });
-  };
-
-  const handleClearImage = () => {
-    setTaskData({ ...taskData, image: "", alt: "" });
   };
 
   const handleAddComment = async () => {
@@ -444,9 +464,7 @@ const AddModal = ({
 
   const onDelete = () => {
     if (handleDeleteTask && selectedTask?.id) {
-      if (window.confirm("Are you sure you want to delete this task?")) {
-        handleDeleteTask(selectedTask.id);
-      }
+      void handleDeleteTask(selectedTask.id);
     }
   };
 
@@ -809,6 +827,55 @@ const AddModal = ({
                   </span>
                 ) : null}
               </div>
+
+              <div className="mt-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                    Cover
+                  </div>
+                  {taskData.image ? (
+                    <button
+                      type="button"
+                      onClick={clearCover}
+                      className="text-xs font-semibold text-gray-500 hover:text-gray-700"
+                    >
+                      Remove cover
+                    </button>
+                  ) : null}
+                </div>
+
+                {taskData.image ? (
+                  <div className="mt-2 grid md:grid-cols-2 grid-cols-1 gap-2 items-start">
+                    <div className="relative w-full">
+                      <img
+                        src={taskData.image}
+                        alt={taskData.alt || "Task cover image"}
+                        className="w-full h-[140px] rounded-lg object-cover border border-gray-200"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700">
+                        Alt text (optional)
+                      </label>
+                      <input
+                        type="text"
+                        name="alt"
+                        value={taskData.alt}
+                        onChange={handleChange}
+                        placeholder="Short description for the cover image"
+                        className="mt-2 w-full h-10 px-3 outline-none rounded-md bg-slate-100 border border-slate-300 text-sm"
+                      />
+                      <div className="mt-2 text-xs text-gray-500">
+                        Used for accessibility and fallback when the image fails to load.
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-2 text-xs text-gray-500">
+                    Upload an image attachment (or add an image link), then click “Set as cover”.
+                  </div>
+                )}
+              </div>
               {taskData.attachments && taskData.attachments.length > 0 ? (
                 <div className="mt-3 flex flex-col gap-2">
                   {taskData.attachments.map((att) => (
@@ -829,13 +896,30 @@ const AddModal = ({
                           {att.type || "link"} {att.size ? `· ${formatBytes(att.size)}` : ""}
                         </span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveAttachment(att.id)}
-                        className="text-xs text-gray-500 hover:text-gray-700"
-                      >
-                        Remove
-                      </button>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {isImageAttachment(att) ? (
+                          taskData.image && att.url && taskData.image === att.url ? (
+                            <span className="text-[11px] font-semibold px-2 py-1 rounded-full bg-orange-100 text-orange-700">
+                              Cover
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setCoverFromAttachment(att)}
+                              className="text-xs font-semibold text-orange-600 hover:text-orange-700"
+                            >
+                              Set as cover
+                            </button>
+                          )
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAttachment(att.id)}
+                          className="text-xs text-gray-500 hover:text-gray-700"
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -968,49 +1052,7 @@ const AddModal = ({
               </div>
             ) : null}
 
-            <div className="grid md:grid-cols-2 grid-cols-1 gap-3 items-start">
-              <div>
-                <label className="text-sm font-semibold text-gray-700">
-                  Image
-                </label>
-                <input
-                  type="file"
-                  name="image"
-                  accept="image/*"
-                  onChange={handleImageChange}
-                  className="mt-2 w-full text-sm"
-                />
-                {taskData.image ? (
-                  <div className="mt-3 relative w-full">
-                    <img
-                      src={taskData.image}
-                      alt={taskData.alt || "Task image preview"}
-                      className="w-full h-[160px] rounded-lg object-cover border border-gray-200"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleClearImage}
-                      className="absolute top-2 right-2 bg-white/90 text-gray-700 text-xs font-semibold px-2 py-1 rounded-md shadow-sm hover:bg-white"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-              <div>
-                <label className="text-sm font-semibold text-gray-700">
-                  Image alt text
-                </label>
-                <input
-                  type="text"
-                  name="alt"
-                  value={taskData.alt}
-                  onChange={handleChange}
-                  placeholder="Short description for the image"
-                  className="mt-2 w-full h-11 px-3 outline-none rounded-md bg-slate-100 border border-slate-300 text-sm"
-                />
-              </div>
-            </div>
+
           </div>
 
           <div className="flex items-center justify-between gap-3 pt-2 border-t border-gray-100">

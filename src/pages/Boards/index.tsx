@@ -35,6 +35,9 @@ import {
 } from "../../services/taskService";
 import {
   logActivity,
+  sendInvite,
+  hasPendingInvite,
+  isMemberEmail,
   subscribeBoardMembers,
 } from "../../services/collaborationService";
 import { subscribeSprints } from "../../services/sprintService";
@@ -53,7 +56,7 @@ type BoardsPageProps = {
 };
 
 const BoardsPage = ({ boardId: boardIdProp }: BoardsPageProps) => {
-  const { searchQuery, uiPreferences, addNotification } =
+  const { uiPreferences, addNotification, confirm } =
     useOutletContext<LayoutOutletContext>();
   const { user, profile } = useAuth();
   const { boardId: paramBoardId } = useParams();
@@ -71,6 +74,12 @@ const BoardsPage = ({ boardId: boardIdProp }: BoardsPageProps) => {
   const [members, setMembers] = useState<BoardMember[]>([]);
   const [sprints, setSprints] = useState<Sprint[]>([]);
   const [automationRules, setAutomationRules] = useState<AutomationRule[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [headerCollapsed, setHeaderCollapsed] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteMessage, setInviteMessage] = useState<string | null>(null);
   const [filters, setFilters] = useState<BoardFilters>({
     ...DEFAULT_BOARD_FILTERS,
   });
@@ -243,6 +252,77 @@ const BoardsPage = ({ boardId: boardIdProp }: BoardsPageProps) => {
       addNotification(describeSnapshotError("Failed to load members", error));
     });
   }, [addNotification, boardId, user]);
+
+  useEffect(() => {
+    setInviteOpen(false);
+    setInviteEmail("");
+    setInviteBusy(false);
+    setInviteMessage(null);
+    setHeaderCollapsed(false);
+  }, [boardId]);
+
+  const isOwner = !!user && !!activeBoard && activeBoard.createdBy === user.uid;
+  const canInvite = isOwner;
+
+  const handleToggleHeader = () => {
+    setHeaderCollapsed((prev) => {
+      const next = !prev;
+      if (next) setInviteOpen(false);
+      return next;
+    });
+  };
+
+  const handleToggleInvite = () => {
+    if (!canInvite) return;
+    setInviteMessage(null);
+    setInviteOpen((prev) => !prev);
+  };
+
+  const handleSendInvite = async () => {
+    if (!user) return;
+    if (!canInvite) {
+      addNotification("Only the owner can invite members.");
+      return;
+    }
+
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email || !email.includes("@")) {
+      setInviteMessage("Please enter a valid email.");
+      return;
+    }
+    if ((user.email || "").trim().toLowerCase() === email) {
+      setInviteMessage("You cannot invite yourself.");
+      return;
+    }
+
+    setInviteBusy(true);
+    setInviteMessage(null);
+    try {
+      if (await isMemberEmail(boardId, email)) {
+        setInviteMessage("That email is already a member.");
+        return;
+      }
+      if (await hasPendingInvite(boardId, email)) {
+        setInviteMessage("Invite already sent.");
+        return;
+      }
+
+      await sendInvite({
+        boardId,
+        email,
+        invitedByUid: user.uid,
+        invitedByName: getUserLabel(user, profile),
+        role: "member",
+      });
+      addNotification("Invite sent.");
+      setInviteEmail("");
+      setInviteOpen(false);
+    } catch (e) {
+      setInviteMessage(e instanceof Error ? e.message : "Invite failed.");
+    } finally {
+      setInviteBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!boardId) {
@@ -532,6 +612,14 @@ const BoardsPage = ({ boardId: boardIdProp }: BoardsPageProps) => {
 
   const handleDeleteTask = async (taskId: string) => {
     try {
+      const ok = await confirm({
+        title: "Delete task?",
+        message: "This will permanently remove the task.",
+        variant: "danger",
+        confirmText: "Delete task",
+      });
+      if (!ok) return;
+
       const existingTask = Object.values(columns)
         .flatMap((c) => c.items)
         .find((t) => t.id === taskId);
@@ -604,12 +692,14 @@ const BoardsPage = ({ boardId: boardIdProp }: BoardsPageProps) => {
       addNotification("Only admins can delete lists.");
       return;
     }
-    if (
-      !window.confirm(
-        "Are you sure you want to delete this list? All tasks in it will be lost."
-      )
-    )
-      return;
+
+    const ok = await confirm({
+      title: "Delete list?",
+      message: "All tasks in this list will be deleted.",
+      variant: "danger",
+      confirmText: "Delete list",
+    });
+    if (!ok) return;
     try {
       const colName = columns[columnId]?.name;
       await deleteColumn(columnId, boardId);
@@ -773,9 +863,21 @@ const BoardsPage = ({ boardId: boardIdProp }: BoardsPageProps) => {
           }
           members={members}
           roleLabel={getRoleLabel(boardRole)}
+          collapsed={headerCollapsed}
+          onToggleCollapsed={handleToggleHeader}
+          canInvite={canInvite}
+          inviteOpen={inviteOpen}
+          inviteEmail={inviteEmail}
+          inviteBusy={inviteBusy}
+          inviteMessage={inviteMessage}
+          onToggleInvite={handleToggleInvite}
+          onInviteEmailChange={setInviteEmail}
+          onSendInvite={() => void handleSendInvite()}
         />
 
         <BoardFiltersBar
+          searchQuery={searchQuery}
+          onSearchQueryChange={setSearchQuery}
           filters={filters}
           swimlane={swimlane}
           tags={availableTags}

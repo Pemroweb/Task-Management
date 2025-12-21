@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import RequireAuth from "../components/RequireAuth";
 import Layout from "../layout";
 import Auth from "../pages/Auth";
+import Landing from "../pages/Landing";
 import Home from "../pages/Home";
 import NotFound from "../pages/NotFound";
 import Analytics from "../pages/Analytics";
@@ -18,11 +19,11 @@ const ProjectToBoardRedirect = () => {
 const AppRoutes = () => {
   return (
     <Routes>
+      <Route path="/" element={<Landing />} />
       <Route path="/auth" element={<Auth />} />
 
       <Route element={<RequireAuth />}>
         <Route element={<Layout />}>
-          <Route path="/" element={<Home />} />
           <Route path="/home" element={<Home />} />
           <Route path="/projects" element={<Projects />} />
           <Route path="/projects/:projectId" element={<ProjectToBoardRedirect />} />

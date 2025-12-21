@@ -13,21 +13,14 @@ body {
 	height: 100%;
 	position: relative;
 	overflow-y: hidden;
+	background: #f8fafc;
+	color: #0f172a;
 }
 
-body::before {
-	content: "";
-	position: absolute;
-	top: 0;
-	left: 0;
-	width: 100%;
+html,
+body,
+#root {
 	height: 100%;
-	background-image: url("./assets/images/bg.jpg");
-	background-repeat: no-repeat;
-	background-position: center;
-	background-size: cover;
-	filter: brightness(0.7);
-	z-index: -1;
 }
 
 ::-webkit-scrollbar {

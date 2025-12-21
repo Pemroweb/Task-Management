@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useOutletContext } from "react-router";
 import { useAuth } from "../../context/useAuth";
 import { useBoards } from "../../context/useBoards";
 import { useProjects } from "../../context/useProjects";
+import type { LayoutOutletContext } from "../../layout";
 
 const describeProjectError = (e: unknown) => {
   if (e && typeof e === "object") {
@@ -36,6 +38,7 @@ const describeDeleteProjectError = (e: unknown) => {
 
 const Projects = () => {
   const { user } = useAuth();
+  const { confirm } = useOutletContext<LayoutOutletContext>();
   const {
     projects,
     activeProjectId,
@@ -77,9 +80,12 @@ const Projects = () => {
 
   const handleDelete = async (projectId: string, projectName: string) => {
     if (deletingId) return;
-    const ok = window.confirm(
-      `Delete project "${projectName}"? This will remove its board, columns, and tasks.`
-    );
+    const ok = await confirm({
+      title: `Delete "${projectName}"?`,
+      message: "This will remove its board, columns, and tasks.",
+      variant: "danger",
+      confirmText: "Delete project",
+    });
     if (!ok) return;
 
     setDeleteError(null);
@@ -154,8 +160,19 @@ const Projects = () => {
           return (
             <div
               key={project.id}
-              className={`bg-white rounded-lg p-5 shadow-sm border ${
-                isActive ? "border-orange-300" : "border-gray-100"
+              role="button"
+              tabIndex={0}
+              onClick={() => setActiveProjectId(project.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setActiveProjectId(project.id);
+                }
+              }}
+              className={`bg-white rounded-xl p-5 shadow-sm border transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-200 ${
+                isActive
+                  ? "border-orange-300"
+                  : "border-slate-200 hover:border-slate-300"
               }`}
             >
               <div className="flex items-start justify-between gap-3">
@@ -175,26 +192,25 @@ const Projects = () => {
               </div>
 
               <div className="mt-4 flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setActiveProjectId(project.id)}
-                  className="px-3 py-1.5 rounded-md bg-gray-200 text-gray-700 text-sm font-semibold hover:bg-gray-300"
-                >
-                  Select
-                </button>
                 <Link
                   to={`/board/${project.id}`}
-                  onClick={() => setActiveProjectId(project.id)}
-                  className="px-3 py-1.5 rounded-md bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveProjectId(project.id);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800"
                 >
                   Open
                 </Link>
                 {isOwner ? (
                   <button
                     type="button"
-                    onClick={() => void handleDelete(project.id, project.name)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void handleDelete(project.id, project.name);
+                    }}
                     disabled={deletingId === project.id}
-                    className="px-3 py-1.5 rounded-md bg-red-100 text-red-600 text-sm font-semibold hover:bg-red-200 disabled:opacity-60"
+                    className="px-3 py-1.5 rounded-xl bg-red-100 text-red-600 text-sm font-semibold hover:bg-red-200 disabled:opacity-60"
                   >
                     {deletingId === project.id ? "Deleting..." : "Delete"}
                   </button>

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useOutletContext } from "react-router";
 import { useAuth, getUserLabel } from "../../context/useAuth";
 import { useBoards } from "../../context/useBoards";
+import type { LayoutOutletContext } from "../../layout";
 import {
   getRoleLabel,
   normalizeBoardRole,
@@ -10,10 +12,7 @@ import {
 import {
   acceptInvite,
   declineInvite,
-  hasPendingInvite,
-  isMemberEmail,
   removeBoardMember,
-  sendInvite,
   subscribeActivity,
   subscribeBoardMembers,
   subscribeInvitesForEmail,
@@ -25,7 +24,6 @@ import type {
   ActivityEntry,
   BoardInvite,
   BoardMember,
-  BoardRole,
 } from "../../types/collaboration";
 
 const formatDateId = (date: Date) =>
@@ -53,6 +51,7 @@ type TaskRow = TaskT & {
 
   const Home = () => {
   const { user, profile } = useAuth();
+  const { confirm } = useOutletContext<LayoutOutletContext>();
   const { activeBoardId, activeBoard, boards } = useBoards();
   const boardLink = activeBoard?.projectId ? `/board/${activeBoard.projectId}` : "/projects";
   const [columns, setColumns] = useState<Columns>({});
@@ -61,10 +60,6 @@ type TaskRow = TaskT & {
   const [invites, setInvites] = useState<BoardInvite[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const inviteRole: BoardRole = "member";
-  const [inviteMessage, setInviteMessage] = useState<string | null>(null);
-  const [inviteSending, setInviteSending] = useState(false);
   const [memberMessage, setMemberMessage] = useState<string | null>(null);
   const [memberBusyId, setMemberBusyId] = useState<string | null>(null);
   const isOwner = !!user && !!activeBoard && activeBoard.createdBy === user.uid;
@@ -159,53 +154,6 @@ type TaskRow = TaskT & {
     return map;
   }, [boards]);
 
-  const handleSendInvite = async () => {
-    if (!user || !activeBoardId) return;
-    if (!canManageMembers) {
-      setInviteMessage("Only the owner can invite members.");
-      return;
-    }
-    const trimmed = inviteEmail.trim();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-      setInviteMessage("Please enter a valid email.");
-      return;
-    }
-    if (user.email && user.email.toLowerCase() === trimmed.toLowerCase()) {
-      setInviteMessage("You cannot invite yourself.");
-      return;
-    }
-
-    setInviteSending(true);
-    setInviteMessage(null);
-    try {
-      const alreadyMember = await isMemberEmail(activeBoardId, trimmed);
-      if (alreadyMember) {
-        setInviteMessage("That email is already a member.");
-        return;
-      }
-
-      const alreadyInvited = await hasPendingInvite(activeBoardId, trimmed);
-      if (alreadyInvited) {
-        setInviteMessage("Invite already sent.");
-        return;
-      }
-
-      await sendInvite({
-        boardId: activeBoardId,
-        email: trimmed,
-        invitedByUid: user.uid,
-        invitedByName: getUserLabel(user, profile),
-        role: inviteRole,
-      });
-      setInviteEmail("");
-      setInviteMessage("Invite sent.");
-    } catch (e) {
-      setInviteMessage(e instanceof Error ? e.message : "Invite failed.");
-    } finally {
-      setInviteSending(false);
-    }
-  };
-
   const handleRoleChange = async (
     member: BoardMember,
     nextRole: NormalizedBoardRole
@@ -230,9 +178,13 @@ type TaskRow = TaskT & {
 
   const handleRemoveMember = async (member: BoardMember) => {
     if (!canManageMembers || member.uid === user?.uid) return;
-    if (!window.confirm(`Remove ${member.displayName} from this board?`)) {
-      return;
-    }
+    const ok = await confirm({
+      title: `Remove ${member.displayName}?`,
+      message: "They will lose access to this board and its tasks.",
+      variant: "danger",
+      confirmText: "Remove member",
+    });
+    if (!ok) return;
     setMemberBusyId(member.id);
     setMemberMessage(null);
     try {
@@ -264,10 +216,10 @@ type TaskRow = TaskT & {
         <div className="text-sm text-gray-600 mt-1">{error}</div>
         <div className="mt-4">
           <Link
-            to="/boards"
+            to="/projects"
             className="inline-flex items-center justify-center px-4 py-2 rounded-md bg-orange-400 text-white font-medium hover:bg-orange-500"
           >
-            Go to Boards
+            Go to Projects
           </Link>
         </div>
       </div>
@@ -276,58 +228,33 @@ type TaskRow = TaskT & {
 
   return (
     <div className="w-full flex flex-col gap-6 pb-8">
-      <div className="w-full bg-white rounded-lg p-6 shadow-sm border border-gray-100 flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+      <div className="w-full rounded-2xl p-6 shadow-sm border border-orange-100 bg-gradient-to-r from-orange-50 to-white flex flex-col gap-4">
         <div className="flex flex-col gap-1">
-          <div className="text-xl font-bold text-gray-800">
-            Welcome, {getUserLabel(user, profile)}
+          <div className="text-2xl font-extrabold text-slate-900">
+            Welcome back, {getUserLabel(user, profile)}
           </div>
-          <div className="text-sm text-gray-600">
-            Stay aligned with your team and keep tasks moving.
-          </div>
-          <div className="text-xs text-gray-500 mt-1">
-            Active board: {activeBoard?.name || "Not selected"}
+          <div className="text-sm text-slate-600">
+            Your workspace overview — invites, tasks, and collaboration in one place.
           </div>
         </div>
-        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-          <Link
-            to="/projects"
-            className="inline-flex items-center justify-center px-4 py-2 rounded-md bg-orange-400 text-white font-medium hover:bg-orange-500"
-          >
-            Open Projects
-          </Link>
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2 bg-slate-100 rounded-md px-3 py-2">
-              <input
-                type="email"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                placeholder="Invite by email"
-                className="bg-transparent outline-none text-sm w-full"
-                disabled={!activeBoardId || !canManageMembers}
-              />
-              <button
-                type="button"
-                onClick={handleSendInvite}
-                disabled={inviteSending || !activeBoardId || !canManageMembers}
-                className="px-3 py-1.5 rounded-md bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 disabled:opacity-60"
-              >
-                Invite
-              </button>
-            </div>
-            {activeBoardId && !canManageMembers ? (
-              <span className="text-xs text-gray-500">
-                Only the owner can invite members.
-              </span>
-            ) : null}
-          </div>
+        <div className="flex flex-wrap gap-2">
+          <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-white border border-slate-200 text-sm font-semibold text-slate-700">
+            Active board: {activeBoard?.name || "Not selected"}
+          </span>
+          <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-white border border-slate-200 text-sm font-semibold text-slate-700">
+            Role: {isOwner ? "Owner" : "Member"}
+          </span>
+          <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-white border border-slate-200 text-sm font-semibold text-slate-700">
+            My tasks: {myWork.length}
+          </span>
+          <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-white border border-slate-200 text-sm font-semibold text-slate-700">
+            Pending invites: {pendingInvites.length}
+          </span>
+        </div>
+        <div className="text-xs text-slate-500">
+          Invites appear below. To invite someone, open a project board and use the Invite button in the header.
         </div>
       </div>
-
-      {inviteMessage ? (
-        <div className="text-sm text-gray-700 bg-white rounded-lg border border-gray-100 px-4 py-3 shadow-sm">
-          {inviteMessage}
-        </div>
-      ) : null}
       {memberMessage ? (
         <div className="text-sm text-gray-700 bg-white rounded-lg border border-gray-100 px-4 py-3 shadow-sm">
           {memberMessage}
@@ -346,10 +273,10 @@ type TaskRow = TaskT & {
           <div className="text-sm text-gray-600 mt-1">{error}</div>
           <div className="mt-4">
             <Link
-              to="/boards"
+              to="/projects"
               className="inline-flex items-center justify-center px-4 py-2 rounded-md bg-orange-400 text-white font-medium hover:bg-orange-500"
             >
-              Go to Boards
+              Go to Projects
             </Link>
           </div>
         </div>

@@ -2,7 +2,6 @@ import {
   ChevronDown,
   Bell,
   UserCircle,
-  Search,
   Settings,
   Share2,
   X,
@@ -12,11 +11,8 @@ import type { Dispatch, SetStateAction } from "react";
 import { Link, useLocation } from "react-router-dom";
 import type { UiPreferences } from "../../types/ui";
 import type { ActivityNotification } from "../../types/notifications";
-import { useBoards } from "../../context/useBoards";
 
 type NavbarProps = {
-  searchQuery: string;
-  onSearchQueryChange: (next: string) => void;
   uiPreferences: UiPreferences;
   onUiPreferencesChange: Dispatch<SetStateAction<UiPreferences>>;
   notifications: ActivityNotification[];
@@ -24,7 +20,7 @@ type NavbarProps = {
   onRemoveNotification: (id: string) => void;
 };
 
-type OpenMenu = "pages" | "settings" | "notifications" | "boards" | null;
+type OpenMenu = "pages" | "settings" | "notifications" | null;
 
 const NAV_ITEMS = [
   { title: "Home", to: "/home" },
@@ -33,8 +29,6 @@ const NAV_ITEMS = [
 ];
 
 const Navbar = ({
-  searchQuery,
-  onSearchQueryChange,
   uiPreferences,
   onUiPreferencesChange,
   notifications,
@@ -42,7 +36,6 @@ const Navbar = ({
   onRemoveNotification,
 }: NavbarProps) => {
   const location = useLocation();
-  const { boards, activeBoard, setActiveBoardId } = useBoards();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -97,7 +90,7 @@ const Navbar = ({
   return (
     <div
       ref={containerRef}
-      className="md:w-[calc(100%-230px)] w-[calc(100%-60px)] fixed flex items-center justify-between pl-2 pr-6 h-[70px] top-0 md:left-[230px] left-[60px] border-b border-slate-300 bg-[#fff]"
+      className="md:w-[calc(100%-230px)] w-[calc(100%-60px)] fixed flex items-center justify-between pl-2 pr-6 h-[70px] top-0 md:left-[230px] left-[60px] border-b border-slate-200 bg-white/90 backdrop-blur z-40"
     >
       <div
         className="flex items-center gap-3 cursor-pointer relative"
@@ -117,7 +110,9 @@ const Navbar = ({
                 to={item.to}
                 onClick={() => setOpenMenu(null)}
                 className={`w-full px-3 py-2 flex items-center justify-between hover:bg-gray-50 text-sm font-semibold ${
-                  location.pathname === item.to ? "text-orange-500" : "text-gray-700"
+                  location.pathname === item.to
+                    ? "text-orange-500"
+                    : "text-gray-700"
                 }`}
               >
                 <span>{item.title}</span>
@@ -126,74 +121,6 @@ const Navbar = ({
                 ) : null}
               </Link>
             ))}
-          </div>
-        ) : null}
-      </div>
-      <div className="md:w-[800px] w-[130px] bg-gray-100 rounded-lg px-3 py-[10px] flex items-center gap-2">
-        <Search color={"#999"} size={20} />
-        <input
-          type="text"
-          placeholder="Search"
-          value={searchQuery}
-          onChange={(e) => onSearchQueryChange(e.target.value)}
-          className="w-full bg-gray-100 outline-none text-[15px]"
-        />
-        {searchQuery.trim() ? (
-          <button
-            type="button"
-            onClick={() => onSearchQueryChange("")}
-            className="grid place-items-center rounded-full hover:bg-gray-200 p-1"
-            title="Clear search"
-          >
-            <X size={18} color="#666" />
-          </button>
-        ) : null}
-      </div>
-      <div className="md:flex hidden items-center gap-2 relative">
-        <button
-          type="button"
-          onClick={() => setOpenMenu((m) => (m === "boards" ? null : "boards"))}
-          className="flex items-center gap-2 bg-gray-100 px-3 py-2 rounded-md text-sm font-semibold text-gray-700 hover:bg-gray-200"
-        >
-          <span className="max-w-[140px] truncate">
-            {activeBoard?.name || "Select board"}
-          </span>
-          <ChevronDown size={16} />
-        </button>
-        {openMenu === "boards" ? (
-          <div className="absolute top-[55px] right-0 w-[260px] bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden z-50">
-            <div className="px-3 py-2 border-b border-gray-100 text-sm font-bold text-gray-800">
-              Boards
-            </div>
-            <div className="max-h-[260px] overflow-y-auto">
-              {boards.map((board) => (
-                <Link
-                  key={board.id}
-                  to={`/boards/${board.id}`}
-                  onClick={() => {
-                    setActiveBoardId(board.id);
-                    setOpenMenu(null);
-                  }}
-                  className={`w-full px-3 py-2 flex items-center justify-between hover:bg-gray-50 text-sm font-semibold ${
-                    activeBoard?.id === board.id
-                      ? "text-orange-500"
-                      : "text-gray-700"
-                  }`}
-                >
-                  <span className="truncate">{board.name}</span>
-                  {activeBoard?.id === board.id ? (
-                    <span className="text-xs font-bold">Active</span>
-                  ) : null}
-                </Link>
-              ))}
-            </div>
-            <Link
-              to="/boards/manage"
-              onClick={() => setOpenMenu(null)}
-              className="block px-3 py-2 text-sm font-semibold text-orange-500 hover:text-orange-600 border-t border-gray-100"
-            >
-              Manage boards
-            </Link>
           </div>
         ) : null}
       </div>
@@ -208,7 +135,9 @@ const Navbar = ({
 
         <div
           className="grid place-items-center bg-gray-100 rounded-full p-2 cursor-pointer hover:bg-gray-200"
-          onClick={() => setOpenMenu((m) => (m === "settings" ? null : "settings"))}
+          onClick={() =>
+            setOpenMenu((m) => (m === "settings" ? null : "settings"))
+          }
           title="Settings"
         >
           <Settings color={"#444"} size={20} />

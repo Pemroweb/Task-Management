@@ -7,13 +7,13 @@ const RequireAuth = () => {
   if (loading) {
     return (
       <div className="w-screen h-screen grid place-items-center">
-        <div className="text-lg font-semibold text-gray-200">Loading...</div>
+        <div className="text-lg font-semibold text-slate-700">Loading...</div>
       </div>
     );
   }
 
   if (!user) {
-    return <Navigate to="/auth" replace />;
+    return <Navigate to="/" replace />;
   }
 
   return <Outlet />;
