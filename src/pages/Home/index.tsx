@@ -4,11 +4,8 @@ import { useOutletContext } from "react-router";
 import { useAuth, getUserLabel } from "../../context/useAuth";
 import { useBoards } from "../../context/useBoards";
 import type { LayoutOutletContext } from "../../layout";
-import {
-  getRoleLabel,
-  normalizeBoardRole,
-  type NormalizedBoardRole,
-} from "../../helpers/roles";
+import { ChevronDown } from "lucide-react";
+import { getRoleLabel } from "../../helpers/roles";
 import {
   acceptInvite,
   declineInvite,
@@ -16,7 +13,6 @@ import {
   subscribeActivity,
   subscribeBoardMembers,
   subscribeInvitesForEmail,
-  updateBoardMemberRole,
 } from "../../services/collaborationService";
 import { subscribeBoardData } from "../../services/taskService";
 import { Columns, TaskT } from "../../types";
@@ -49,11 +45,20 @@ type TaskRow = TaskT & {
   columnName: string;
 };
 
-  const Home = () => {
+const Home = () => {
   const { user, profile } = useAuth();
   const { confirm } = useOutletContext<LayoutOutletContext>();
-  const { activeBoardId, activeBoard, boards } = useBoards();
-  const boardLink = activeBoard?.projectId ? `/board/${activeBoard.projectId}` : "/projects";
+  const { activeBoardId, activeBoard, boards, setActiveBoardId } = useBoards();
+
+  const currentBoard = useMemo(() => {
+    if (!activeBoardId) return null;
+    return boards.find((b) => b.id === activeBoardId) || activeBoard;
+  }, [boards, activeBoardId, activeBoard]);
+
+  const boardLink = currentBoard?.projectId
+    ? `/board/${currentBoard.projectId}`
+    : "/projects";
+
   const [columns, setColumns] = useState<Columns>({});
   const [members, setMembers] = useState<BoardMember[]>([]);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
@@ -62,7 +67,9 @@ type TaskRow = TaskT & {
   const [error, setError] = useState<string | null>(null);
   const [memberMessage, setMemberMessage] = useState<string | null>(null);
   const [memberBusyId, setMemberBusyId] = useState<string | null>(null);
-  const isOwner = !!user && !!activeBoard && activeBoard.createdBy === user.uid;
+
+  const isOwner =
+    !!user && !!currentBoard && currentBoard.createdBy === user.uid;
   const canManageMembers = isOwner;
   const visibleMembers = canManageMembers ? members : members.slice(0, 6);
 
@@ -105,14 +112,8 @@ type TaskRow = TaskT & {
       };
     }
 
-    const unsubscribeMembers = subscribeBoardMembers(
-      activeBoardId,
-      setMembers
-    );
-    const unsubscribeActivity = subscribeActivity(
-      activeBoardId,
-      setActivity
-    );
+    const unsubscribeMembers = subscribeBoardMembers(activeBoardId, setMembers);
+    const unsubscribeActivity = subscribeActivity(activeBoardId, setActivity);
     return () => {
       unsubscribeMembers();
       unsubscribeActivity();
@@ -148,39 +149,18 @@ type TaskRow = TaskT & {
     () => invites.filter((invite) => invite.status === "pending"),
     [invites]
   );
+
   const boardNameMap = useMemo(() => {
     const map = new Map<string, string>();
     boards.forEach((board) => map.set(board.id, board.name));
     return map;
   }, [boards]);
 
-  const handleRoleChange = async (
-    member: BoardMember,
-    nextRole: NormalizedBoardRole
-  ) => {
-    if (!canManageMembers || member.uid === user?.uid) return;
-    if (normalizeBoardRole(member.role) === nextRole) return;
-    setMemberBusyId(member.id);
-    setMemberMessage(null);
-    try {
-      await updateBoardMemberRole(member.id, nextRole);
-      setMemberMessage(
-        `Updated ${member.displayName} to ${getRoleLabel(nextRole)}.`
-      );
-    } catch (e) {
-      setMemberMessage(
-        e instanceof Error ? e.message : "Failed to update member role."
-      );
-    } finally {
-      setMemberBusyId(null);
-    }
-  };
-
   const handleRemoveMember = async (member: BoardMember) => {
     if (!canManageMembers || member.uid === user?.uid) return;
     const ok = await confirm({
       title: `Remove ${member.displayName}?`,
-      message: "They will lose access to this board and its tasks.",
+      message: "They will lose access to this project and its tasks.",
       variant: "danger",
       confirmText: "Remove member",
     });
@@ -189,7 +169,7 @@ type TaskRow = TaskT & {
     setMemberMessage(null);
     try {
       await removeBoardMember(member.id);
-      setMemberMessage(`${member.displayName} removed from the board.`);
+      setMemberMessage(`${member.displayName} removed from the project.`);
     } catch (e) {
       setMemberMessage(
         e instanceof Error ? e.message : "Failed to remove member."
@@ -231,16 +211,44 @@ type TaskRow = TaskT & {
       <div className="w-full rounded-2xl p-6 shadow-sm border border-orange-100 bg-gradient-to-r from-orange-50 to-white flex flex-col gap-4">
         <div className="flex flex-col gap-1">
           <div className="text-2xl font-extrabold text-slate-900">
-            Welcome back, {getUserLabel(user, profile)}
+            Welcome back, {user?.displayName || getUserLabel(user, profile)}
           </div>
           <div className="text-sm text-slate-600">
-            Your workspace overview — invites, tasks, and collaboration in one place.
+            Your workspace overview — invites, tasks, and collaboration in one
+            place.
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-white border border-slate-200 text-sm font-semibold text-slate-700">
-            Active board: {activeBoard?.name || "Not selected"}
-          </span>
+
+        <div className="flex flex-wrap gap-2 items-center">
+          <div className="inline-flex items-center pl-3 pr-2 py-1.5 rounded-full bg-white border border-slate-200 shadow-sm gap-2">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              Project:
+            </span>
+            <div className="relative group">
+              <select
+                value={activeBoardId || ""}
+                onChange={(e) => setActiveBoardId(e.target.value)}
+                className="appearance-none bg-transparent text-sm font-bold text-orange-600 pr-6 focus:outline-none cursor-pointer hover:text-orange-700"
+              >
+                {boards.length === 0 ? (
+                  <option value="" disabled>
+                    Loading projects...
+                  </option>
+                ) : (
+                  boards.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name || "Untitled Project"}
+                    </option>
+                  ))
+                )}
+              </select>
+              <ChevronDown
+                size={14}
+                className="absolute right-0 top-1/2 -translate-y-1/2 text-orange-600 pointer-events-none"
+              />
+            </div>
+          </div>
+
           <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-white border border-slate-200 text-sm font-semibold text-slate-700">
             Role: {isOwner ? "Owner" : "Member"}
           </span>
@@ -252,7 +260,8 @@ type TaskRow = TaskT & {
           </span>
         </div>
         <div className="text-xs text-slate-500">
-          Invites appear below. To invite someone, open a project board and use the Invite button in the header.
+          Invites appear below. To invite someone, open the project board and
+          use the Invite button.
         </div>
       </div>
       {memberMessage ? (
@@ -261,32 +270,14 @@ type TaskRow = TaskT & {
         </div>
       ) : null}
 
-      {loading ? (
-        <div className="w-full flex items-center justify-center py-10">
-          <span className="text-lg font-semibold text-gray-200">
-            Loading dashboard...
-          </span>
-        </div>
-      ) : error ? (
-        <div className="w-full bg-white rounded-lg p-5 shadow-sm">
-          <div className="text-red-600 font-semibold">Failed to load</div>
-          <div className="text-sm text-gray-600 mt-1">{error}</div>
-          <div className="mt-4">
-            <Link
-              to="/projects"
-              className="inline-flex items-center justify-center px-4 py-2 rounded-md bg-orange-400 text-white font-medium hover:bg-orange-500"
-            >
-              Go to Projects
-            </Link>
-          </div>
-        </div>
-      ) : !activeBoardId ? (
+      {!activeBoardId ? (
         <div className="w-full bg-white rounded-lg p-5 shadow-sm border border-gray-100">
           <div className="text-lg font-bold text-gray-800">
-            Create your first board
+            Create your first project
           </div>
           <div className="text-sm text-gray-600 mt-1">
-            Boards help your team organize tasks, deadlines, and collaboration.
+            Projects help your team organize tasks, deadlines, and
+            collaboration.
           </div>
           <Link
             to="/projects"
@@ -300,9 +291,7 @@ type TaskRow = TaskT & {
           <div className="md:col-span-2 flex flex-col gap-4">
             <div className="bg-white rounded-lg p-5 shadow-sm border border-gray-100">
               <div className="flex items-center justify-between">
-                <div className="text-lg font-bold text-gray-800">
-                  My work
-                </div>
+                <div className="text-lg font-bold text-gray-800">My work</div>
                 <Link
                   to={boardLink}
                   className="text-sm font-semibold text-orange-500 hover:text-orange-600"
@@ -311,7 +300,8 @@ type TaskRow = TaskT & {
                 </Link>
               </div>
               <div className="text-sm text-gray-600">
-                Tasks assigned to you or mentioning you.
+                Tasks assigned to you or mentioning you in{" "}
+                <b>{currentBoard?.name || "this project"}</b>.
               </div>
               {myWork.length === 0 ? (
                 <div className="mt-4 text-sm text-gray-600">
@@ -380,7 +370,7 @@ type TaskRow = TaskT & {
                         </span>
                         <span className="text-xs text-gray-600">
                           Invited you to{" "}
-                          {boardNameMap.get(invite.boardId) || "a board"} as{" "}
+                          {boardNameMap.get(invite.boardId) || "a project"} as{" "}
                           {getRoleLabel(invite.role)}
                         </span>
                       </div>
@@ -409,15 +399,21 @@ type TaskRow = TaskT & {
 
           <div className="flex flex-col gap-4">
             <div className="bg-white rounded-lg p-5 shadow-sm border border-gray-100">
-              <div className="text-lg font-bold text-gray-800">Team</div>
+              <div className="text-lg font-bold text-gray-800">
+                Project Team
+              </div>
               <div className="text-sm text-gray-600">
-                {members.length} members in this board.
+                {members.length} members in{" "}
+                <b>{currentBoard?.name || "this project"}</b>.
               </div>
               <div className="mt-4 flex flex-col gap-3">
                 {visibleMembers.map((member) => {
-                  const roleValue = normalizeBoardRole(member.role);
                   const isSelf = member.uid === user?.uid;
                   const isBusy = memberBusyId === member.id;
+
+                  const isCreator = currentBoard?.createdBy === member.uid;
+                  const displayRole = isCreator ? "Owner" : "Member";
+
                   return (
                     <div
                       key={member.id}
@@ -443,26 +439,11 @@ type TaskRow = TaskT & {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        {canManageMembers && !isSelf ? (
+                        {canManageMembers && !isSelf && !isCreator ? (
                           <>
-                            <select
-                              value={roleValue}
-                              onChange={(e) =>
-                                handleRoleChange(
-                                  member,
-                                  e.target.value as NormalizedBoardRole
-                                )
-                              }
-                              disabled={isBusy}
-                              className="text-xs bg-slate-100 border border-slate-200 rounded px-2 py-1"
-                            >
-                              <option value="member">Member</option>
-                              {roleValue === "admin" ? (
-                                <option value="admin" disabled>
-                                  Admin (legacy)
-                                </option>
-                              ) : null}
-                            </select>
+                            <span className="text-xs font-semibold text-gray-600 mr-2">
+                              {displayRole}
+                            </span>
                             <button
                               type="button"
                               onClick={() => handleRemoveMember(member)}
@@ -474,7 +455,7 @@ type TaskRow = TaskT & {
                           </>
                         ) : (
                           <span className="text-xs font-semibold text-gray-600">
-                            {getRoleLabel(member.role)}
+                            {displayRole}
                           </span>
                         )}
                       </div>

@@ -95,7 +95,9 @@ export const ensureDefaultBoard = async (createdBy: string) => {
 export const ensurePersonalBoard = async (user: User) => {
   const userRef = doc(db, USERS_COLLECTION, user.uid);
   const userSnap = await getDoc(userRef);
-  const data = userSnap.exists() ? (userSnap.data() as Partial<UserProfile>) : {};
+  const data = userSnap.exists()
+    ? (userSnap.data() as Partial<UserProfile>)
+    : {};
 
   let projectId =
     typeof data.defaultProjectId === "string" ? data.defaultProjectId : "";
@@ -184,7 +186,8 @@ export const ensureBoardMember = async (
       throw e;
     }
   }
-  const storedRole: BoardRole = role === "owner" ? "owner" : normalizeBoardRole(role);
+  const storedRole: BoardRole =
+    role === "owner" ? "owner" : normalizeBoardRole(role);
 
   if (snapshot && snapshot.exists()) {
     const data = snapshot.data() as BoardMember;
@@ -235,10 +238,12 @@ export const subscribeBoardMembers = (
             typeof data.uid === "string"
               ? data.uid
               : typeof data.userId === "string"
-                ? data.userId
-                : "";
+              ? data.userId
+              : "";
           const role =
-            data.role === "owner" || data.role === "admin" || data.role === "member"
+            data.role === "owner" ||
+            data.role === "admin" ||
+            data.role === "member"
               ? data.role
               : "member";
           const displayName =
@@ -250,8 +255,8 @@ export const subscribeBoardMembers = (
             typeof data.joinedAt === "number"
               ? data.joinedAt
               : typeof data.addedAt === "number"
-                ? data.addedAt
-                : Date.now();
+              ? data.addedAt
+              : Date.now();
 
           return {
             id: docSnap.id,
@@ -287,7 +292,10 @@ export const subscribeBoardMemberships = (
   uid: string,
   onChange: (memberships: BoardMember[]) => void
 ) => {
-  const qUid = query(collection(db, MEMBERS_COLLECTION), where("uid", "==", uid));
+  const qUid = query(
+    collection(db, MEMBERS_COLLECTION),
+    where("uid", "==", uid)
+  );
   const qLegacy = query(
     collection(db, MEMBERS_COLLECTION),
     where("userId", "==", uid)
@@ -309,7 +317,9 @@ export const subscribeBoardMemberships = (
         const boardId = typeof data.boardId === "string" ? data.boardId : "";
         if (!boardId) return;
         const role =
-          data.role === "owner" || data.role === "admin" || data.role === "member"
+          data.role === "owner" ||
+          data.role === "admin" ||
+          data.role === "member"
             ? data.role
             : "member";
         const displayName =
@@ -321,8 +331,8 @@ export const subscribeBoardMemberships = (
           typeof data.joinedAt === "number"
             ? data.joinedAt
             : typeof data.addedAt === "number"
-              ? data.addedAt
-              : Date.now();
+            ? data.addedAt
+            : Date.now();
 
         byBoardId.set(boardId, {
           id: docSnap.id,
@@ -395,10 +405,7 @@ export const subscribeInvitesForEmail = (
   });
 };
 
-export const acceptInvite = async (
-  invite: BoardInvite,
-  user: User
-) => {
+export const acceptInvite = async (invite: BoardInvite, user: User) => {
   await ensureBoardMember(invite.boardId, user, invite.role, {
     inviteId: invite.id,
   });
@@ -453,7 +460,9 @@ export const declineInviteById = async (inviteId: string) => {
   });
 };
 
-export const logActivity = async (entry: Omit<ActivityEntry, "id" | "createdAt">) => {
+export const logActivity = async (
+  entry: Omit<ActivityEntry, "id" | "createdAt">
+) => {
   await addDoc(collection(db, ACTIVITY_COLLECTION), {
     ...entry,
     createdAt: Date.now(),
@@ -510,4 +519,16 @@ export const hasPendingInvite = async (boardId: string, email: string) => {
   );
   const snapshot = await getDocs(q);
   return !snapshot.empty;
+};
+
+export const syncUserDisplayName = async (uid: string, displayName: string) => {
+  const userRef = doc(db, USERS_COLLECTION, uid);
+  await setDoc(userRef, { displayName }, { merge: true });
+
+  const q = query(collection(db, MEMBERS_COLLECTION), where("uid", "==", uid));
+  const snapshot = await getDocs(q);
+  const updatePromises = snapshot.docs.map((docSnap) =>
+    updateDoc(docSnap.ref, { displayName })
+  );
+  await Promise.all(updatePromises);
 };

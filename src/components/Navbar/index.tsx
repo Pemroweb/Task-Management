@@ -5,6 +5,8 @@ import {
   Settings,
   Share2,
   X,
+  Camera,
+  User as UserIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
@@ -12,6 +14,9 @@ import { Link, useLocation } from "react-router-dom";
 import type { UiPreferences } from "../../types/ui";
 import type { ActivityNotification } from "../../types/notifications";
 import { useProjects } from "../../context/useProjects";
+import { updateProfile, type User } from "firebase/auth";
+import { auth } from "../../firebase";
+import { syncUserDisplayName } from "../../services/collaborationService";
 
 type NavbarProps = {
   uiPreferences: UiPreferences;
@@ -24,6 +29,119 @@ type NavbarProps = {
 };
 
 type OpenMenu = "pages" | "settings" | "notifications" | null;
+
+const EditProfileModal = ({
+  isOpen,
+  onClose,
+  currentUser,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  currentUser: User | null;
+}) => {
+  const [displayName, setDisplayName] = useState(
+    currentUser?.displayName || ""
+  );
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && currentUser) {
+      setDisplayName(currentUser.displayName || "");
+    }
+  }, [isOpen, currentUser]);
+
+  const handleSave = async () => {
+    if (!auth.currentUser) return;
+    setLoading(true);
+    try {
+      await updateProfile(auth.currentUser, {
+        displayName: displayName,
+      });
+      await syncUserDisplayName(auth.currentUser.uid, displayName);
+      window.location.reload();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+      onClose();
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-white">
+          <div className="flex items-center gap-2 text-slate-800 font-bold text-lg">
+            <X
+              className="cursor-pointer hover:text-slate-600"
+              onClick={onClose}
+              size={20}
+            />
+            <span>Edit Profile</span>
+          </div>
+          <button
+            onClick={handleSave}
+            disabled={loading || !displayName.trim()}
+            className="px-4 py-1.5 rounded-full bg-slate-900 text-white text-sm font-bold hover:bg-slate-800 disabled:opacity-50"
+          >
+            {loading ? "Saving..." : "Save"}
+          </button>
+        </div>
+
+        <div className="relative h-32 bg-slate-200">
+          <div className="absolute inset-0 flex items-center justify-center text-slate-400">
+            <Camera size={24} />
+          </div>
+        </div>
+
+        <div className="px-6 pb-6 relative">
+          <div className="w-20 h-20 rounded-full border-4 border-white bg-slate-100 -mt-10 flex items-center justify-center relative overflow-hidden">
+            {currentUser?.photoURL ? (
+              <img
+                src={currentUser.photoURL}
+                alt="Avatar"
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <UserIcon size={32} className="text-slate-400" />
+            )}
+            <div className="absolute inset-0 bg-black/10 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity cursor-pointer">
+              <Camera size={16} className="text-white" />
+            </div>
+          </div>
+
+          <div className="mt-6 flex flex-col gap-4">
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-semibold text-slate-600">
+                Name
+              </label>
+              <input
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                className="w-full px-3 py-2 rounded border border-slate-300 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all text-slate-800"
+                placeholder="Name"
+              />
+            </div>
+            <div className="flex flex-col gap-1 opacity-60 pointer-events-none">
+              <label className="text-sm font-semibold text-slate-600">
+                Email
+              </label>
+              <input
+                type="text"
+                value={currentUser?.email || ""}
+                readOnly
+                className="w-full px-3 py-2 rounded border border-slate-300 bg-slate-50 text-slate-800"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const Navbar = ({
   uiPreferences,
@@ -39,6 +157,7 @@ const Navbar = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   const navItems = useMemo(
     () => [
@@ -105,216 +224,245 @@ const Navbar = ({
   };
 
   return (
-    <div
-      ref={containerRef}
-      className="md:w-[calc(100%-230px)] w-[calc(100%-60px)] fixed flex items-center justify-between pl-2 pr-6 h-[70px] top-0 md:left-[230px] left-[60px] border-b border-slate-200 bg-white/90 backdrop-blur z-40"
-    >
+    <>
+      <EditProfileModal
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+        currentUser={auth.currentUser}
+      />
       <div
-        className="flex items-center gap-3 cursor-pointer relative"
-        onClick={() => setOpenMenu((m) => (m === "pages" ? null : "pages"))}
+        ref={containerRef}
+        className="md:w-[calc(100%-230px)] w-[calc(100%-60px)] fixed flex items-center justify-between pl-2 pr-6 h-[70px] top-0 md:left-[230px] left-[60px] border-b border-slate-200 bg-white/90 backdrop-blur z-40"
       >
-        <UserCircle color="#fb923c" size={28} />
-        <span className="text-orange-400 font-semibold md:text-lg text-sm whitespace-nowrap">
-          {pageTitle}
-        </span>
-        <ChevronDown color="#fb923c" size={16} />
-
-        {openMenu === "pages" ? (
-          <div className="absolute top-[55px] left-0 w-[220px] bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden z-50">
-            {navItems.map((item) => {
-              const isActive =
-                location.pathname === item.matchPrefix ||
-                location.pathname.startsWith(`${item.matchPrefix}/`);
-              return (
-              <Link
-                key={item.to}
-                to={item.to}
-                onClick={() => setOpenMenu(null)}
-                className={`w-full px-3 py-2 flex items-center justify-between hover:bg-gray-50 text-sm font-semibold ${
-                  isActive
-                    ? "text-orange-500"
-                    : "text-gray-700"
-                }`}
-              >
-                <span>{item.title}</span>
-                {isActive ? (
-                  <span className="text-xs font-bold">Active</span>
-                ) : null}
-              </Link>
-              );
-            })}
-          </div>
-        ) : null}
-      </div>
-      <div className="md:flex hidden items-center gap-4 relative">
         <div
-          className="grid place-items-center bg-gray-100 rounded-full p-2 cursor-pointer hover:bg-gray-200"
-          onClick={copyShareLink}
-          title="Copy link"
+          className="flex items-center gap-3 cursor-pointer relative"
+          onClick={() => setOpenMenu((m) => (m === "pages" ? null : "pages"))}
         >
-          <Share2 color={"#444"} size={20} />
-        </div>
+          <UserCircle color="#fb923c" size={28} />
+          <span className="text-orange-400 font-semibold md:text-lg text-sm whitespace-nowrap">
+            {pageTitle}
+          </span>
+          <ChevronDown color="#fb923c" size={16} />
 
-        <div
-          className="grid place-items-center bg-gray-100 rounded-full p-2 cursor-pointer hover:bg-gray-200"
-          onClick={() =>
-            setOpenMenu((m) => (m === "settings" ? null : "settings"))
-          }
-          title="Settings"
-        >
-          <Settings color={"#444"} size={20} />
-        </div>
-        {openMenu === "settings" ? (
-          <div className="absolute top-[55px] right-0 w-[260px] bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden z-50">
-            <div className="px-3 py-2 border-b border-gray-100 text-sm font-bold text-gray-800">
-              View settings
+          {openMenu === "pages" ? (
+            <div className="absolute top-[55px] left-0 w-[220px] bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden z-50">
+              <div className="p-3 border-b border-gray-100 flex items-center gap-3 bg-orange-50/50">
+                <div className="w-10 h-10 rounded-full bg-orange-200 flex items-center justify-center text-orange-600 font-bold text-lg">
+                  {auth.currentUser?.displayName?.charAt(0).toUpperCase() ||
+                    "U"}
+                </div>
+                <div className="flex flex-col overflow-hidden">
+                  <span className="text-sm font-bold text-gray-800 truncate">
+                    {auth.currentUser?.displayName || "User"}
+                  </span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenMenu(null);
+                      setIsProfileOpen(true);
+                    }}
+                    className="text-xs text-orange-500 font-semibold text-left hover:underline"
+                  >
+                    Edit Profile
+                  </button>
+                </div>
+              </div>
+
+              {navItems.map((item) => {
+                const isActive =
+                  location.pathname === item.matchPrefix ||
+                  location.pathname.startsWith(`${item.matchPrefix}/`);
+                return (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setOpenMenu(null)}
+                    className={`w-full px-3 py-2 flex items-center justify-between hover:bg-gray-50 text-sm font-semibold ${
+                      isActive ? "text-orange-500" : "text-gray-700"
+                    }`}
+                  >
+                    <span>{item.title}</span>
+                    {isActive ? (
+                      <span className="text-xs font-bold">Active</span>
+                    ) : null}
+                  </Link>
+                );
+              })}
             </div>
-
-            <label className="w-full px-3 py-2 flex items-center justify-between text-sm text-gray-700 cursor-pointer hover:bg-gray-50">
-              <span>Compact mode</span>
-              <input
-                type="checkbox"
-                checked={uiPreferences.compactMode}
-                onChange={(e) =>
-                  onUiPreferencesChange((p) => ({
-                    ...p,
-                    compactMode: e.target.checked,
-                  }))
-                }
-              />
-            </label>
-            <label className="w-full px-3 py-2 flex items-center justify-between text-sm text-gray-700 cursor-pointer hover:bg-gray-50">
-              <span>Show images</span>
-              <input
-                type="checkbox"
-                checked={uiPreferences.showImages}
-                onChange={(e) =>
-                  onUiPreferencesChange((p) => ({
-                    ...p,
-                    showImages: e.target.checked,
-                  }))
-                }
-              />
-            </label>
-            <label className="w-full px-3 py-2 flex items-center justify-between text-sm text-gray-700 cursor-pointer hover:bg-gray-50">
-              <span>Show tags</span>
-              <input
-                type="checkbox"
-                checked={uiPreferences.showTags}
-                onChange={(e) =>
-                  onUiPreferencesChange((p) => ({
-                    ...p,
-                    showTags: e.target.checked,
-                  }))
-                }
-              />
-            </label>
-            <label className="w-full px-3 py-2 flex items-center justify-between text-sm text-gray-700 cursor-pointer hover:bg-gray-50">
-              <span>Show descriptions</span>
-              <input
-                type="checkbox"
-                checked={uiPreferences.showDescriptions}
-                onChange={(e) =>
-                  onUiPreferencesChange((p) => ({
-                    ...p,
-                    showDescriptions: e.target.checked,
-                  }))
-                }
-              />
-            </label>
-          </div>
-        ) : null}
-
-        <div
-          className="relative grid place-items-center bg-gray-100 rounded-full p-2 cursor-pointer hover:bg-gray-200"
-          onClick={() =>
-            setOpenMenu((m) => (m === "notifications" ? null : "notifications"))
-          }
-          title="Notifications"
-        >
-          <Bell color={"#444"} size={20} />
-          {notifications.length ? (
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5">
-              {notifications.length}
-            </span>
           ) : null}
         </div>
+        <div className="md:flex hidden items-center gap-4 relative">
+          <div
+            className="grid place-items-center bg-gray-100 rounded-full p-2 cursor-pointer hover:bg-gray-200"
+            onClick={copyShareLink}
+            title="Copy link"
+          >
+            <Share2 color={"#444"} size={20} />
+          </div>
 
-        {openMenu === "notifications" ? (
-          <div className="absolute top-[55px] right-0 w-[340px] bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden z-50">
-            <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between">
-              <span className="text-sm font-bold text-gray-800">
-                Notifications
-              </span>
-              <button
-                type="button"
-                onClick={onClearNotifications}
-                disabled={notifications.length === 0}
-                className="text-xs font-bold text-orange-500 hover:text-orange-600 disabled:opacity-50"
-              >
-                Clear all
-              </button>
+          <div
+            className="grid place-items-center bg-gray-100 rounded-full p-2 cursor-pointer hover:bg-gray-200"
+            onClick={() =>
+              setOpenMenu((m) => (m === "settings" ? null : "settings"))
+            }
+            title="Settings"
+          >
+            <Settings color={"#444"} size={20} />
+          </div>
+          {openMenu === "settings" ? (
+            <div className="absolute top-[55px] right-0 w-[260px] bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden z-50">
+              <div className="px-3 py-2 border-b border-gray-100 text-sm font-bold text-gray-800">
+                View settings
+              </div>
+
+              <label className="w-full px-3 py-2 flex items-center justify-between text-sm text-gray-700 cursor-pointer hover:bg-gray-50">
+                <span>Compact mode</span>
+                <input
+                  type="checkbox"
+                  checked={uiPreferences.compactMode}
+                  onChange={(e) =>
+                    onUiPreferencesChange((p) => ({
+                      ...p,
+                      compactMode: e.target.checked,
+                    }))
+                  }
+                />
+              </label>
+              <label className="w-full px-3 py-2 flex items-center justify-between text-sm text-gray-700 cursor-pointer hover:bg-gray-50">
+                <span>Show images</span>
+                <input
+                  type="checkbox"
+                  checked={uiPreferences.showImages}
+                  onChange={(e) =>
+                    onUiPreferencesChange((p) => ({
+                      ...p,
+                      showImages: e.target.checked,
+                    }))
+                  }
+                />
+              </label>
+              <label className="w-full px-3 py-2 flex items-center justify-between text-sm text-gray-700 cursor-pointer hover:bg-gray-50">
+                <span>Show tags</span>
+                <input
+                  type="checkbox"
+                  checked={uiPreferences.showTags}
+                  onChange={(e) =>
+                    onUiPreferencesChange((p) => ({
+                      ...p,
+                      showTags: e.target.checked,
+                    }))
+                  }
+                />
+              </label>
+              <label className="w-full px-3 py-2 flex items-center justify-between text-sm text-gray-700 cursor-pointer hover:bg-gray-50">
+                <span>Show descriptions</span>
+                <input
+                  type="checkbox"
+                  checked={uiPreferences.showDescriptions}
+                  onChange={(e) =>
+                    onUiPreferencesChange((p) => ({
+                      ...p,
+                      showDescriptions: e.target.checked,
+                    }))
+                  }
+                />
+              </label>
             </div>
+          ) : null}
 
-            {notifications.length === 0 ? (
-              <div className="px-3 py-4 text-sm text-gray-600">
-                No notifications yet.
+          <div
+            className="relative grid place-items-center bg-gray-100 rounded-full p-2 cursor-pointer hover:bg-gray-200"
+            onClick={() =>
+              setOpenMenu((m) =>
+                m === "notifications" ? null : "notifications"
+              )
+            }
+            title="Notifications"
+          >
+            <Bell color={"#444"} size={20} />
+            {notifications.length ? (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5">
+                {notifications.length}
+              </span>
+            ) : null}
+          </div>
+
+          {openMenu === "notifications" ? (
+            <div className="absolute top-[55px] right-0 w-[340px] bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden z-50">
+              <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between">
+                <span className="text-sm font-bold text-gray-800">
+                  Notifications
+                </span>
+                <button
+                  type="button"
+                  onClick={onClearNotifications}
+                  disabled={notifications.length === 0}
+                  className="text-xs font-bold text-orange-500 hover:text-orange-600 disabled:opacity-50"
+                >
+                  Clear all
+                </button>
               </div>
-            ) : (
-              <div className="max-h-[320px] overflow-y-auto">
-                {notifications.map((n) => (
-                  <div
-                    key={n.id}
-                    className="px-3 py-2 flex items-start gap-2 hover:bg-gray-50"
-                  >
-                    <div className="flex-1">
-                      <div className="text-sm font-semibold text-gray-800">
-                        {n.message}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-0.5">
-                        {formatTimeAgo(n.createdAt)}
-                      </div>
-                      {n.kind === "invite" && n.inviteId ? (
-                        <div className="mt-2 flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => onAcceptInvite(n.id, n.inviteId)}
-                            className="px-3 py-1.5 rounded-md bg-orange-400 text-white text-xs font-semibold hover:bg-orange-500"
-                          >
-                            Accept
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onDeclineInvite(n.id, n.inviteId)}
-                            className="px-3 py-1.5 rounded-md bg-gray-200 text-gray-700 text-xs font-semibold hover:bg-gray-300"
-                          >
-                            Decline
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => onRemoveNotification(n.id)}
-                      className="grid place-items-center rounded-full hover:bg-gray-200 p-1"
-                      title="Dismiss"
+
+              {notifications.length === 0 ? (
+                <div className="px-3 py-4 text-sm text-gray-600">
+                  No notifications yet.
+                </div>
+              ) : (
+                <div className="max-h-[320px] overflow-y-auto">
+                  {notifications.map((n) => (
+                    <div
+                      key={n.id}
+                      className="px-3 py-2 flex items-start gap-2 hover:bg-gray-50"
                     >
-                      <X size={16} color="#666" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : null}
+                      <div className="flex-1">
+                        <div className="text-sm font-semibold text-gray-800">
+                          {n.message}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-0.5">
+                          {formatTimeAgo(n.createdAt)}
+                        </div>
+                        {n.kind === "invite" && n.inviteId ? (
+                          <div className="mt-2 flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => onAcceptInvite(n.id, n.inviteId)}
+                              className="px-3 py-1.5 rounded-md bg-orange-400 text-white text-xs font-semibold hover:bg-orange-500"
+                            >
+                              Accept
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onDeclineInvite(n.id, n.inviteId)}
+                              className="px-3 py-1.5 rounded-md bg-gray-200 text-gray-700 text-xs font-semibold hover:bg-gray-300"
+                            >
+                              Decline
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onRemoveNotification(n.id)}
+                        className="grid place-items-center rounded-full hover:bg-gray-200 p-1"
+                        title="Dismiss"
+                      >
+                        <X size={16} color="#666" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : null}
 
-        {toast ? (
-          <div className="absolute top-[70px] right-0 bg-gray-900 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow-md">
-            {toast}
-          </div>
-        ) : null}
+          {toast ? (
+            <div className="absolute top-[70px] right-0 bg-gray-900 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow-md">
+              {toast}
+            </div>
+          ) : null}
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 
