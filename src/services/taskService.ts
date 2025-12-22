@@ -1,88 +1,40 @@
-import {
-  collection,
-  getDocs,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  doc,
-  query,
-  where,
-  writeBatch,
-  onSnapshot,
-  deleteField,
-} from "firebase/firestore";
-import type { DocumentData, QuerySnapshot } from "firebase/firestore";
-import { db } from "../firebase";
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { Columns, TaskT, ColumnData } from "../types";
 import { DEFAULT_BOARD_ID } from "./collaborationService";
 
-const TASK_COLLECTION = "tasks";
-const COLUMN_COLLECTION = "columns";
-
-// Menggunakan Batch agar pembuatan kolom lebih cepat dan stabil
-export const createDefaultColumns = async (boardId: string) => {
-  const defaults: Array<{
-    name: string;
-    stage: "backlog" | "todo" | "in_progress" | "done";
-  }> = [
-    { name: "To Do", stage: "todo" },
-    { name: "Doing", stage: "in_progress" },
-    { name: "Done", stage: "done" },
-  ];
-
-  const base = Date.now();
-  const batch = writeBatch(db);
-
-  defaults.forEach((def, index) => {
-    const newColRef = doc(collection(db, COLUMN_COLLECTION));
-    batch.set(newColRef, {
-      name: def.name,
-      stage: def.stage,
-      createdAt: base + index,
-      boardId,
-    });
-  });
-
-  await batch.commit();
+export const createDefaultColumns = async (_boardId: string) => {
+  console.warn(
+    "createDefaultColumns via REST is not implemented yet in this demo"
+  );
 };
 
 export const getBoardData = async (
   boardId = DEFAULT_BOARD_ID,
   options?: { autoInit?: boolean }
 ): Promise<Columns> => {
-  const colRef = collection(db, COLUMN_COLLECTION);
-  const qCol = query(colRef, where("boardId", "==", boardId));
-  const colSnap = await getDocs(qCol);
+  try {
+    const response = await fetch(`/api/board?boardId=${boardId}`);
+    if (!response.ok) throw new Error("Failed to fetch board data");
 
-  const autoInit = options?.autoInit !== false;
+    const { columns, tasks } = await response.json();
 
-  if (colSnap.empty) {
-    if (autoInit) {
-      await createDefaultColumns(boardId);
-      // Recursively call to get the data after creation
-      return getBoardData(boardId, options);
+    if (columns.length === 0 && options?.autoInit !== false) {
+      return {};
     }
+
+    return buildBoard(columns, tasks);
+  } catch (error) {
+    console.error(error);
     return {};
   }
-
-  const taskSnap = await getDocs(
-    query(collection(db, TASK_COLLECTION), where("boardId", "==", boardId))
-  );
-
-  const board = buildBoard(colSnap, taskSnap);
-
-  return board;
 };
 
-const buildBoard = (
-  colSnap: QuerySnapshot<DocumentData>,
-  taskSnap: QuerySnapshot<DocumentData>
-) => {
-  const columnsList = colSnap.docs
-    .map((docSnapshot) => {
-      const data = docSnapshot.data() as ColumnData;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const buildBoard = (columnsListRaw: any[], tasksListRaw: any[]) => {
+  const columnsList = columnsListRaw
+    .map((data) => {
       return {
-        id: docSnapshot.id,
+        id: data.id,
         name: data.name,
         createdAt: data.createdAt,
         wipLimit: typeof data.wipLimit === "number" ? data.wipLimit : undefined,
@@ -110,11 +62,9 @@ const buildBoard = (
     validColumnIds.push(col.id);
   });
 
-  taskSnap.forEach((docSnapshot) => {
-    const data = docSnapshot.data();
-    // Validasi data task dasar
+  tasksListRaw.forEach((data) => {
     const task: TaskT = {
-      id: docSnapshot.id,
+      id: data.id,
       title: data.title || "Untitled",
       description: data.description || "",
       priority: data.priority || "low",
@@ -144,7 +94,6 @@ const buildBoard = (
 
     let status = data.status;
     if (!status || !board[status]) {
-      // Jika status tidak valid, masukkan ke kolom pertama
       status = validColumnIds[0];
     }
 
@@ -170,179 +119,53 @@ export const subscribeBoardData = (
   onChange: (columns: Columns) => void,
   onError?: (error: Error) => void
 ) => {
-  if (!boardId) return () => {};
+  let active = true;
 
-  const colRef = collection(db, COLUMN_COLLECTION);
-  const qCol = query(colRef, where("boardId", "==", boardId));
-  const taskRef = query(
-    collection(db, TASK_COLLECTION),
-    where("boardId", "==", boardId)
-  );
-
-  let colSnap: QuerySnapshot<DocumentData> | null = null;
-  let taskSnap: QuerySnapshot<DocumentData> | null = null;
-  let initializing = false;
-
-  const build = async () => {
-    // Tunggu sampai kedua snapshot tersedia
-    if (!colSnap || !taskSnap) return;
-
-    // Jika kolom kosong dan belum proses inisialisasi, coba buat default
-    if (colSnap.empty && !initializing) {
-      initializing = true;
-      try {
-        await createDefaultColumns(boardId);
-      } catch (e) {
-        console.error("Auto-creation of columns failed", e);
-      } finally {
-        initializing = false;
-      }
-      // Kita return di sini agar snapshot berikutnya (setelah write) yang men-trigger update UI
-      return;
+  const fetchAndSet = async () => {
+    if (!active) return;
+    try {
+      const data = await getBoardData(boardId);
+      if (active) onChange(data);
+    } catch (e) {
+      if (active && onError) onError(e as Error);
     }
-
-    const board = buildBoard(colSnap, taskSnap);
-    onChange(board);
   };
 
-  const unsubscribeColumns = onSnapshot(
-    qCol,
-    (snapshot) => {
-      colSnap = snapshot;
-      void build();
-    },
-    (error) => onError?.(error)
-  );
-
-  const unsubscribeTasks = onSnapshot(
-    taskRef,
-    (snapshot) => {
-      taskSnap = snapshot;
-      void build();
-    },
-    (error) => onError?.(error)
-  );
+  fetchAndSet();
+  const interval = setInterval(fetchAndSet, 5000);
 
   return () => {
-    unsubscribeColumns();
-    unsubscribeTasks();
+    active = false;
+    clearInterval(interval);
   };
 };
 
-export const migrateLegacyBoardData = async (boardId = DEFAULT_BOARD_ID) => {
-  const [colSnap, taskSnap] = await Promise.all([
-    getDocs(collection(db, COLUMN_COLLECTION)),
-    getDocs(collection(db, TASK_COLLECTION)),
-  ]);
-
-  let batch = writeBatch(db);
-  let ops = 0;
-
-  for (const docSnap of colSnap.docs) {
-    const data = docSnap.data();
-    if (data.boardId) continue;
-    batch.update(docSnap.ref, { boardId });
-    ops += 1;
-    if (ops >= 450) {
-      await batch.commit();
-      batch = writeBatch(db);
-      ops = 0;
-    }
-  }
-
-  for (const docSnap of taskSnap.docs) {
-    const data = docSnap.data();
-    if (data.boardId) continue;
-    batch.update(docSnap.ref, { boardId });
-    ops += 1;
-    if (ops >= 450) {
-      await batch.commit();
-      batch = writeBatch(db);
-      ops = 0;
-    }
-  }
-
-  if (ops > 0) {
-    await batch.commit();
-  }
+export const migrateLegacyBoardData = async (_boardId = DEFAULT_BOARD_ID) => {
+  return;
 };
 
 export const addColumn = async (
   name: string,
-  boardId = DEFAULT_BOARD_ID,
+  _boardId = DEFAULT_BOARD_ID,
   options?: { wipLimit?: number; stage?: ColumnData["stage"] }
 ) => {
-  const payload: Record<string, unknown> = {
-    name,
-    createdAt: Date.now(),
-    boardId,
-  };
-  if (typeof options?.wipLimit === "number") {
-    payload.wipLimit = options.wipLimit;
-  }
-  if (options?.stage) {
-    payload.stage = options.stage;
-  }
-
-  const docRef = await addDoc(collection(db, COLUMN_COLLECTION), payload);
   return {
-    id: docRef.id,
+    id: "temp-id",
     name,
-    wipLimit:
-      typeof options?.wipLimit === "number" ? options?.wipLimit : undefined,
+    wipLimit: options?.wipLimit,
     stage: options?.stage,
   };
 };
 
 export const updateColumn = async (
-  columnId: string,
-  updates: { name?: string; wipLimit?: number; stage?: ColumnData["stage"] }
+  _columnId: string,
+  _updates: { name?: string; wipLimit?: number; stage?: ColumnData["stage"] }
 ) => {
-  const payload: Record<string, unknown> = {};
-  if (typeof updates.name === "string") {
-    payload.name = updates.name.trim();
-  }
-  if (updates.wipLimit === undefined) {
-    // ignore
-  } else if (Number.isNaN(updates.wipLimit) || updates.wipLimit <= 0) {
-    payload.wipLimit = deleteField();
-  } else {
-    payload.wipLimit = updates.wipLimit;
-  }
-  if (updates.stage !== undefined) {
-    payload.stage = updates.stage;
-  }
-  if (Object.keys(payload).length === 0) return;
-  await updateDoc(doc(db, COLUMN_COLLECTION, columnId), payload);
+  return;
 };
 
-export const deleteColumn = async (columnId: string, boardId: string) => {
-  const colRef = doc(db, COLUMN_COLLECTION, columnId);
-  const tasksQ = query(
-    collection(db, TASK_COLLECTION),
-    where("boardId", "==", boardId),
-    where("status", "==", columnId)
-  );
-  const taskSnap = await getDocs(tasksQ);
-
-  let batch = writeBatch(db);
-  let ops = 0;
-
-  for (const taskDoc of taskSnap.docs) {
-    batch.delete(taskDoc.ref);
-    ops += 1;
-    if (ops >= 450) {
-      await batch.commit();
-      batch = writeBatch(db);
-      ops = 0;
-    }
-  }
-
-  batch.delete(colRef);
-  ops += 1;
-  if (ops > 0) {
-    await batch.commit();
-  }
+export const deleteColumn = async (_columnId: string, _boardId: string) => {
+  return;
 };
 
 export const addTask = async (
@@ -350,7 +173,6 @@ export const addTask = async (
   status: string,
   boardId = DEFAULT_BOARD_ID
 ) => {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { id, ...taskData } = task;
   const createdAt = Date.now();
   const order = typeof taskData.order === "number" ? taskData.order : createdAt;
@@ -367,76 +189,67 @@ export const addTask = async (
     order,
   };
 
-  // Firestore tidak menerima value `undefined`.
-  const payload: Record<string, unknown> = {};
-  Object.entries(rawPayload).forEach(([key, value]) => {
-    if (value === undefined) return;
-    payload[key] = value;
+  const response = await fetch("/api/tasks", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(rawPayload),
   });
 
-  const docRef = await addDoc(collection(db, TASK_COLLECTION), payload);
-  return { id: docRef.id, ...taskData, createdAt, order, boardId };
+  if (!response.ok) throw new Error("Failed to add task");
+
+  const result = await response.json();
+  return { id: result.id, ...taskData, createdAt, order, boardId };
 };
 
 export const updateTask = async (task: TaskT) => {
   const { id, ...taskData } = task;
-  const taskRef = doc(db, TASK_COLLECTION, id);
-  const normalized: Record<string, unknown> = {};
-  Object.entries(taskData).forEach(([key, value]) => {
-    if (value === undefined) return;
-    normalized[key] = value;
+
+  const response = await fetch("/api/tasks", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, ...taskData }),
   });
-  normalized.deadline =
-    typeof taskData.deadline === "number"
-      ? taskData.deadline
-      : Number(taskData.deadline) || 0;
-  await updateDoc(taskRef, normalized);
+
+  if (!response.ok) throw new Error("Failed to update task");
 };
 
 export const updateTaskFields = async (
   taskId: string,
   updates: Record<string, unknown>
 ) => {
-  if (Object.keys(updates).length === 0) return;
-  const taskRef = doc(db, TASK_COLLECTION, taskId);
-  await updateDoc(taskRef, updates);
+  const response = await fetch("/api/tasks", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: taskId, ...updates }),
+  });
+  if (!response.ok) throw new Error("Failed to update task fields");
 };
 
 export const updateTaskStatus = async (taskId: string, newStatus: string) => {
-  const taskRef = doc(db, TASK_COLLECTION, taskId);
-  await updateDoc(taskRef, { status: newStatus });
+  await updateTaskFields(taskId, { status: newStatus });
 };
 
 export const updateTaskSprint = async (taskId: string, sprintId?: string) => {
-  const taskRef = doc(db, TASK_COLLECTION, taskId);
-  await updateDoc(taskRef, {
-    sprintId: sprintId ? sprintId : deleteField(),
-  });
+  await updateTaskFields(taskId, { sprintId: sprintId || null });
 };
 
 export const deleteTask = async (taskId: string) => {
-  const taskRef = doc(db, TASK_COLLECTION, taskId);
-  await deleteDoc(taskRef);
+  const response = await fetch(`/api/tasks?id=${taskId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) throw new Error("Failed to delete task");
 };
 
-export const updateColumnOrder = async (orderedColumnIds: string[]) => {
-  if (!orderedColumnIds.length) return;
-  const base = Date.now();
-  const batch = writeBatch(db);
-  orderedColumnIds.forEach((columnId, index) => {
-    batch.update(doc(db, COLUMN_COLLECTION, columnId), {
-      createdAt: base + index,
-    });
-  });
-  await batch.commit();
+export const updateColumnOrder = async (_orderedColumnIds: string[]) => {
+  return;
 };
 
 export const syncTaskOrders = async (columns: Columns, columnIds: string[]) => {
   const updates: Array<{
-    taskId: string;
+    id: string;
     status: string;
     order: number;
-    completedAt?: number | ReturnType<typeof deleteField>;
+    completedAt?: number | null;
   }> = [];
 
   columnIds.forEach((columnId) => {
@@ -446,35 +259,27 @@ export const syncTaskOrders = async (columns: Columns, columnIds: string[]) => {
       const isDone =
         col.stage === "done" ||
         /done|closed|complete|completed|finish|selesai/i.test(col.name);
-      updates.push({
-        taskId: task.id,
-        status: columnId,
-        order: index,
-        completedAt: isDone ? task.completedAt ?? Date.now() : deleteField(),
-      });
+
+      if (task.order !== index || task.boardId !== columnId) {
+        updates.push({
+          id: task.id,
+          status: columnId,
+          order: index,
+          completedAt: isDone ? task.completedAt ?? Date.now() : null,
+        });
+      }
     });
   });
 
   if (!updates.length) return;
 
-  let batch = writeBatch(db);
-  let ops = 0;
-
-  for (const u of updates) {
-    batch.update(doc(db, TASK_COLLECTION, u.taskId), {
-      status: u.status,
-      order: u.order,
-      completedAt: u.completedAt,
-    });
-    ops += 1;
-    if (ops >= 450) {
-      await batch.commit();
-      batch = writeBatch(db);
-      ops = 0;
-    }
-  }
-
-  if (ops > 0) {
-    await batch.commit();
-  }
+  await Promise.all(
+    updates.map((u) =>
+      fetch("/api/tasks", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(u),
+      })
+    )
+  );
 };
