@@ -10,6 +10,22 @@ import ProjectBoard from "../pages/ProjectBoard";
 import Projects from "../pages/Projects";
 import { useProjects } from "../context/useProjects";
 
+const AnalyticsSkeleton = () => {
+  return (
+    <div className="w-full h-full p-6 space-y-8 animate-pulse">
+      <div className="h-8 w-64 bg-gray-700/50 rounded-lg" />
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="h-32 bg-gray-700/50 rounded-xl" />
+        ))}
+      </div>
+
+      <div className="w-full h-96 bg-gray-700/50 rounded-xl" />
+    </div>
+  );
+};
+
 const ProjectToBoardRedirect = () => {
   const { projectId } = useParams();
   if (!projectId) return <Navigate to="/projects" replace />;
@@ -18,17 +34,14 @@ const ProjectToBoardRedirect = () => {
 
 const AnalyticsRedirect = () => {
   const { activeProjectId, loading, projects } = useProjects();
+
   if (loading) {
-    return (
-      <div className="w-full flex items-center justify-center py-10">
-        <span className="text-lg font-semibold text-gray-200">
-          Loading analytics...
-        </span>
-      </div>
-    );
+    return <AnalyticsSkeleton />;
   }
+
   const fallbackId = projects[0]?.id ?? null;
   const targetId = activeProjectId ?? fallbackId;
+
   if (!targetId) return <Navigate to="/projects" replace />;
   return <Navigate to={`/analytics/${targetId}`} replace />;
 };
@@ -43,7 +56,10 @@ const AppRoutes = () => {
         <Route element={<Layout />}>
           <Route path="/home" element={<Home />} />
           <Route path="/projects" element={<Projects />} />
-          <Route path="/projects/:projectId" element={<ProjectToBoardRedirect />} />
+          <Route
+            path="/projects/:projectId"
+            element={<ProjectToBoardRedirect />}
+          />
           <Route path="/board/:projectId" element={<ProjectBoard />} />
           <Route path="/analytics" element={<AnalyticsRedirect />} />
           <Route path="/analytics/:projectId" element={<Analytics />} />
